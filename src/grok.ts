@@ -43,8 +43,10 @@ export type GrokClient = {
   getVideoStatus: (input: GrokVideoStatusInput) => Promise<VideoStatusResult>;
 };
 
-const DEFAULT_IMAGE_MODEL = 'grok-imagine-image-quality';
-const DEFAULT_VIDEO_MODEL = 'grok-imagine-video';
+// Fork-specific: use TQZHR/grok2api proxy model names (only valid names per proxy).
+// Override via XAI_DEFAULT_IMAGE_MODEL / XAI_DEFAULT_VIDEO_MODEL env vars if needed.
+const DEFAULT_IMAGE_MODEL = process.env.XAI_DEFAULT_IMAGE_MODEL || 'grok-imagine-1.0';
+const DEFAULT_VIDEO_MODEL = process.env.XAI_DEFAULT_VIDEO_MODEL || 'grok-imagine-1.0-video';
 const VIDEO_POLL_INTERVAL_MS = 5_000;
 
 const buildResponsesInput = (
