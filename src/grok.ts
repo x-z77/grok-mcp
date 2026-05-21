@@ -1,3 +1,6 @@
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import OpenAI from 'openai';
 import type { Config } from './config.js';
 import type { ResolvedMedia } from './media.js';
@@ -121,6 +124,38 @@ const sleep = (ms: number): Promise<void> =>
     setTimeout(res, ms);
   });
 
+/**
+ * Fork-specific: normalize image response items into accessible references.
+ *
+ * - `{url}` items are returned as-is (xAI's standard).
+ * - `{b64_json}` items are decoded and written to a temp file; the file path
+ *   is returned instead.
+ *
+ * Why: `TQZHR/grok2api` defaults to `b64_json` (full image inline, ~200KB)
+ * rather than hosting URLs. This lets callers consume either shape transparently.
+ * Files land in `os.tmpdir()` — clean up after use; the OS will wipe on reboot.
+ */
+const materializeImageData = async (
+  data: { url?: string; b64_json?: string }[],
+): Promise<string[]> => {
+  const out: string[] = [];
+  let counter = 0;
+  for (const d of data) {
+    if (d.url && d.url.trim()) {
+      out.push(d.url);
+      continue;
+    }
+    if (d.b64_json) {
+      const buf = Buffer.from(d.b64_json, 'base64');
+      const path = join(tmpdir(), `grok-image-${Date.now()}-${counter}.jpg`);
+      await writeFile(path, buf);
+      out.push(path);
+      counter += 1;
+    }
+  }
+  return out;
+};
+
 const parseVideoStatus = (raw: unknown, requestId: string): VideoStatusResult => {
   const r = raw as {
     status?: string;
@@ -224,8 +259,12 @@ export const createGrokClient = (config: Config): GrokClient => {
         ...(input.aspect_ratio && { aspect_ratio: input.aspect_ratio }),
         images: sources.map((s) => s.url),
       };
-      const resp = await rawRequest<{ data?: { url?: string }[] }>('POST', '/images/edits', body);
-      return (resp.data ?? []).map((d) => d.url ?? '').filter(Boolean);
+      const resp = await rawRequest<{ data?: { url?: string; b64_json?: string }[] }>(
+        'POST',
+        '/images/edits',
+        body,
+      );
+      return materializeImageData(resp.data ?? []);
     }
 
     try {
@@ -235,7 +274,7 @@ export const createGrokClient = (config: Config): GrokClient => {
         ...(input.n !== undefined && { n: input.n }),
         ...(input.aspect_ratio && { aspect_ratio: input.aspect_ratio }),
       } as never);
-      return ((resp.data ?? []) as { url?: string }[]).map((d) => d.url ?? '').filter(Boolean);
+      return materializeImageData((resp.data ?? []) as { url?: string; b64_json?: string }[]);
     } catch (err) {
       throw formatApiError(err);
     }

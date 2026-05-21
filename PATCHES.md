@@ -22,7 +22,7 @@ There is no env var to override these defaults in upstream.
 
 ## Patches
 
-### `src/grok.ts` — defaults + env override
+### Patch 1 — `src/grok.ts` defaults + env override
 
 ```typescript
 const DEFAULT_IMAGE_MODEL = process.env.XAI_DEFAULT_IMAGE_MODEL || 'grok-imagine-1.0';
@@ -31,6 +31,26 @@ const DEFAULT_VIDEO_MODEL = process.env.XAI_DEFAULT_VIDEO_MODEL || 'grok-imagine
 
 Both defaults now match `TQZHR/grok2api`'s known good model names.
 Override via env vars if the proxy adds new image/video models later.
+
+### Patch 2 — `src/grok.ts` accept `b64_json` responses
+
+`TQZHR/grok2api` defaults `/v1/images/generations` to
+`response_format: "b64_json"` and returns the full image inline (~200KB
+base64). Upstream `grok-mcp` only reads `data[].url`, so all images come
+back as empty strings → `urls.length === 0` → "No image URLs returned
+by xAI". We added a `materializeImageData` helper that:
+
+- Returns `{url}` items as-is.
+- Decodes `{b64_json}` items and writes them to
+  `os.tmpdir()/grok-image-<ts>-<i>.jpg`, returning the file path.
+
+Both `/images/generations` and `/images/edits` go through this helper,
+so URL-mode and b64-mode are both supported. Reverts to a no-op if the
+proxy starts returning `url` again.
+
+Trade-off: files in `/tmp` are clobbered on reboot, but that matches our
+"verify-then-delete" workflow. Callers should `open` or read the path
+promptly.
 
 ## Usage
 
@@ -66,7 +86,7 @@ Forks do NOT auto-sync. To pull upstream:
 
 1. Visit `https://github.com/x-z77/grok-mcp` → click "Sync fork"
 2. Resolve conflicts (likely in `src/grok.ts`)
-3. Verify our 2-line patch survives
+3. Verify our two patches (default models + `materializeImageData`) survive
 
 If upstream adds env var support for these defaults (worth filing
 upstream as a PR), drop our patch entirely.
