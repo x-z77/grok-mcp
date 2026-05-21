@@ -44,11 +44,15 @@ by xAI". We added a `materializeImageData` helper that:
 - Decodes `{b64_json}` items and writes them to
   `os.tmpdir()/grok-image-<ts>-<i>.jpg`, returning the file path.
 
+`os.tmpdir()` resolves to `$TMPDIR` on macOS (a user-private path like
+`/var/folders/<hash>/T/`), and to `/tmp` on Linux. Either way it's a
+scratch directory that the OS wipes on reboot.
+
 Both `/images/generations` and `/images/edits` go through this helper,
 so URL-mode and b64-mode are both supported. Reverts to a no-op if the
 proxy starts returning `url` again.
 
-Trade-off: files in `/tmp` are clobbered on reboot, but that matches our
+Trade-off: files are clobbered on reboot, but that matches our
 "verify-then-delete" workflow. Callers should `open` or read the path
 promptly.
 
